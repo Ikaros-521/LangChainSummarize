@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 # 加载.env文件中的环境变量
 load_dotenv()
 
+type = "langchain+gpt"
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 
 # location of the pdf file/files. 
@@ -53,51 +54,58 @@ print("共切分为" + str(len(texts)) + "块文本内容")
 embeddings = OpenAIEmbeddings()
 docsearch = FAISS.from_texts(texts, embeddings)
 
-from langchain.chains.question_answering import load_qa_chain
-from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI
-from langchain.callbacks import get_openai_callback
-from langchain.prompts import PromptTemplate
+# 只用langchain，不做gpt的调用，可以节省token，做个简单的本地数据搜索
+if type == "langchain":
+    while True:
+        query = input("提问：")
+        docs = docsearch.similarity_search(query)
+        print(docs)
+else:
+    from langchain.chains.question_answering import load_qa_chain
+    from langchain.llms import OpenAI
+    from langchain.chat_models import ChatOpenAI
+    from langchain.callbacks import get_openai_callback
+    from langchain.prompts import PromptTemplate
 
-# 使用以下上下文来回答最后的问题。如果你不知道答案，就说你不知道或者你在文章中找不到答案，不要试图编造答案。
-prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know or you can't find the answer in the article, don't try to make up an answer.
+    # 使用以下上下文来回答最后的问题。如果你不知道答案，就说你不知道或者你在文章中找不到答案，不要试图编造答案。
+    prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know or you can't find the answer in the article, don't try to make up an answer.
 
-{context}
+    {context}
 
-Question: {question}
-Answer in Chinese:"""
-PROMPT = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
-)
+    Question: {question}
+    Answer in Chinese:"""
+    PROMPT = PromptTemplate(
+        template=prompt_template, input_variables=["context", "question"]
+    )
 
-# 创建一个询问-回答链（QA Chain），使用了一个自定义的提示模板
-chain = load_qa_chain(ChatOpenAI(model_name="gpt-3.5-turbo-0301", openai_api_key=OPENAI_API_KEY), chain_type="stuff", prompt=PROMPT)
+    # 创建一个询问-回答链（QA Chain），使用了一个自定义的提示模板
+    chain = load_qa_chain(ChatOpenAI(model_name="gpt-3.5-turbo-0301", openai_api_key=OPENAI_API_KEY), chain_type="stuff", prompt=PROMPT)
 
-def query_func(str):
-  with get_openai_callback() as cb:
-    query = str
-    # 将用户的查询进行相似性搜索，并使用QA链运行
-    docs = docsearch.similarity_search(query)
+    def query_func(str):
+        with get_openai_callback() as cb:
+            query = str
+            # 将用户的查询进行相似性搜索，并使用QA链运行
+            docs = docsearch.similarity_search(query)
 
-    # 可以打印匹配的文档内容，看看
-    # print(docs)
+            # 可以打印匹配的文档内容，看看
+            # print(docs)
 
-    res = chain.run(input_documents=docs, question=query)
+            res = chain.run(input_documents=docs, question=query)
 
-    # 相关消耗和费用
-    print(f"Output: {res}")
-    print(f"Total Tokens: {cb.total_tokens}")
-    print(f"Prompt Tokens: {cb.prompt_tokens}")
-    print(f"Completion Tokens: {cb.completion_tokens}")
-    print(f"Successful Requests: {cb.successful_requests}")
-    print(f"Total Cost (USD): ${cb.total_cost}")
+            # 相关消耗和费用
+            print(f"Output: {res}")
+            print(f"Total Tokens: {cb.total_tokens}")
+            print(f"Prompt Tokens: {cb.prompt_tokens}")
+            print(f"Completion Tokens: {cb.completion_tokens}")
+            print(f"Successful Requests: {cb.successful_requests}")
+            print(f"Total Cost (USD): ${cb.total_cost}")
 
 
-while True:
-    query = input("提问：")
-    query_func(query)
+    while True:
+        query = input("提问：")
+        query_func(query)
 
-# 当用户输入一个查询时，这个系统首先会在本地文档集合中进行相似性搜索，寻找与查询最相关的文档。
-# 然后，它会把这些相关文档以及用户的查询作为输入，传递给语言模型。这个语言模型会基于这些输入生成一个答案。
-# 如果系统在本地文档集合中找不到任何与用户查询相关的文档，或者如果语言模型无法基于给定的输入生成一个有意义的答案，
-# 那么这个系统可能就无法回答用户的查询。
+    # 当用户输入一个查询时，这个系统首先会在本地文档集合中进行相似性搜索，寻找与查询最相关的文档。
+    # 然后，它会把这些相关文档以及用户的查询作为输入，传递给语言模型。这个语言模型会基于这些输入生成一个答案。
+    # 如果系统在本地文档集合中找不到任何与用户查询相关的文档，或者如果语言模型无法基于给定的输入生成一个有意义的答案，
+    # 那么这个系统可能就无法回答用户的查询。
